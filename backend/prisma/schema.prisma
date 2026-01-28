@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Sistema de Autenticação
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Hash bcrypt
+  name      String
+  role      String   @default("coordenador") // admin, coordenador, professor
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+model Teacher {
+  id              String       @id @default(uuid())
+  name            String
+  workloadMonthly Int
+  color           String
+  allocations     Allocation[]
+  createdAt       DateTime     @default(now())
+
+  @@index([name])
+}
+
+model Allocation {
+  id             String            @id @default(uuid())
+  teacherId      String
+  teacher        Teacher           @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject        String
+  lessonsPerWeek Int
+  classes        ClassAllocation[]
+
+  @@index([teacherId])
+  @@index([subject])
+}
+
+model ClassAllocation {
+  id           String     @id @default(uuid())
+  allocationId String
+  allocation   Allocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  classId      String     // e.g. "6A"
+
+  @@index([allocationId])
+  @@index([classId])
+}
+
+model Schedule {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  active    Boolean  @default(true)
+  lessons   Lesson[]
+
+  @@index([active])
+}
+
+model Lesson {
+  id         String   @id @default(uuid())
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  teacherId  String
+  subject    String
+  classId    String
+  day        Int      // 0-4 (Segunda a Sexta)
+  timeSlot   Int      // 0-6 (horários de aula)
+  locked     Boolean  @default(false)
+
+  // Índices para performance
+  @@index([scheduleId])
+  @@index([teacherId])
+  @@index([classId])
+  @@index([day, timeSlot])
+
+  // Constraint: Não pode ter duas aulas no mesmo horário para mesma turma
+  @@unique([scheduleId, day, timeSlot, classId])
+}
