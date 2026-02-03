@@ -19,6 +19,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Confiar no proxy (nginx) para X-Forwarded-For
+app.set('trust proxy', 1);
+
 // CORS configuração
 const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [
     'http://localhost:8765',
