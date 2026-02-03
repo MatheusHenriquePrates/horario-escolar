@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # BANCO DE DADOS - INTERNO (NÃO EXPOSTO)
+  # ==========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: horario-escolar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: horario_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: horario_escolar
+    volumes:
+      - horario_postgres_data:/var/lib/postgresql/data
+    networks:
+      - horario-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U horario_user -d horario_escolar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # BACKEND API - EXPOSTO APENAS LOCAL
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: horario-escolar-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://horario_user:${POSTGRES_PASSWORD}@postgres:5432/horario_escolar
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 3001
+      CORS_ORIGINS: https://horario.matheusprates.com
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3336:3001"
+    networks:
+      - horario-internal
+
+  # ==========================================
+  # FRONTEND - EXPOSTO APENAS LOCAL
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://api-horario.matheusprates.com/api
+    container_name: horario-escolar-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:3337:80"
+    networks:
+      - horario-internal
+
+networks:
+  horario-internal:
+    name: horario-escolar-network
+    driver: bridge
+
+volumes:
+  horario_postgres_data:
+    name: horario-escolar-postgres-data

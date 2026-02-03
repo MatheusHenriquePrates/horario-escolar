@@ -216,20 +216,42 @@ export const updateTeacher = async (req: Request, res: Response) => {
     const { nome, cargaHoraria, disciplinas, color } = req.body;
 
     try {
+        // Validar dados de entrada
+        if (!nome || typeof nome !== 'string') {
+            return res.status(400).json({ error: 'Nome é obrigatório' });
+        }
+        if (!cargaHoraria || typeof cargaHoraria !== 'number') {
+            return res.status(400).json({ error: 'Carga horária é obrigatória' });
+        }
+        if (!disciplinas || !Array.isArray(disciplinas) || disciplinas.length === 0) {
+            return res.status(400).json({ error: 'Pelo menos uma disciplina é obrigatória' });
+        }
+
+        // Verificar se professor existe antes de atualizar
+        const existingTeacher = await prisma.teacher.findUnique({ where: { id } });
+        if (!existingTeacher) {
+            return res.status(404).json({ error: "Professor não encontrado" });
+        }
+
+        console.log(`🔄 Atualizando professor ${id}: ${nome}`);
+
         const updated = await prisma.$transaction(async (tx: any) => {
+            // 1. Atualizar dados básicos do professor
             await tx.teacher.update({
                 where: { id },
                 data: {
                     name: nome,
                     workloadMonthly: cargaHoraria,
-                    color
+                    color: color || existingTeacher.color
                 }
             });
 
+            // 2. Deletar alocações antigas
             await tx.allocation.deleteMany({
                 where: { teacherId: id }
             });
 
+            // 3. Criar novas alocações
             for (const d of disciplinas) {
                 await tx.allocation.create({
                     data: {
@@ -243,20 +265,31 @@ export const updateTeacher = async (req: Request, res: Response) => {
                 });
             }
 
+            // 4. Buscar dados atualizados
             return await tx.teacher.findUnique({
                 where: { id },
-                include: { allocations: { include: { classes: true } } }
+                include: { 
+                    allocations: { 
+                        include: { classes: true } 
+                    } 
+                }
             });
         });
 
         if (!updated) {
-            res.status(404).json({ error: "Teacher not found" });
-            return;
+            return res.status(500).json({ error: "Erro ao recuperar dados atualizados" });
         }
 
+        console.log(`✅ Professor ${nome} atualizado com sucesso`);
+
+        // Formatar resposta no padrão esperado pelo frontend
         const formatted = {
-            ...updated,
-            allocations: (updated as any).allocations.map((a: any) => ({
+            id: updated.id,
+            name: updated.name,
+            workloadMonthly: updated.workloadMonthly,
+            color: updated.color,
+            createdAt: updated.createdAt,
+            allocations: updated.allocations.map((a: any) => ({
                 id: a.id,
                 subject: a.subject,
                 lessonsPerWeek: a.lessonsPerWeek,
@@ -266,9 +299,19 @@ export const updateTeacher = async (req: Request, res: Response) => {
 
         res.json(formatted);
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Error updating teacher" });
+    } catch (error: any) {
+        console.error('❌ Erro ao atualizar professor:', error);
+        
+        // Verificar se é erro de professor não encontrado
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: "Professor não encontrado" });
+        }
+        
+        res.status(500).json({ 
+            error: "Erro ao atualizar professor",
+            details: error.message,
+            code: error.code
+        });
     }
 };
 
@@ -277,6 +320,18 @@ export const deleteTeacher = async (req: Request, res: Response) => {
         const id = req.params.id as string;
 
         console.log(`🗑️  Deletando professor ${id}...`);
+
+        // Verificar se professor existe
+        const teacher = await prisma.teacher.findUnique({ where: { id } });
+        if (!teacher) {
+            console.log(`   ❌ Professor ${id} não encontrado`);
+            return res.status(404).json({ 
+                error: 'Professor não encontrado',
+                code: 'NOT_FOUND'
+            });
+        }
+
+        console.log(`   📌 Professor encontrado: ${teacher.name}`);
 
         // IMPORTANTE: Deletar também todas as aulas deste professor na grade
         const deletedLessons = await prisma.lesson.deleteMany({
@@ -288,15 +343,36 @@ export const deleteTeacher = async (req: Request, res: Response) => {
         // Agora deleta o professor (Allocations serão deletadas em cascata)
         await prisma.teacher.delete({ where: { id } });
 
-        console.log(`   ✅ Professor deletado com sucesso`);
+        console.log(`   ✅ Professor "${teacher.name}" deletado com sucesso`);
 
         res.json({
             success: true,
+            message: `Professor "${teacher.name}" removido com sucesso`,
             lessonsDeleted: deletedLessons.count
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('❌ Erro ao deletar professor:', error);
-        res.status(500).json({ error: 'Error deleting teacher' });
+        
+        // Tratamento de erros específicos do Prisma
+        if (error.code === 'P2025') {
+            return res.status(404).json({ 
+                error: 'Professor não encontrado',
+                code: 'NOT_FOUND'
+            });
+        }
+        
+        if (error.code === 'P2003') {
+            return res.status(400).json({ 
+                error: 'Não é possível deletar: professor possui dados relacionados',
+                code: 'FOREIGN_KEY_CONSTRAINT'
+            });
+        }
+        
+        res.status(500).json({ 
+            error: 'Erro ao deletar professor',
+            details: error.message,
+            code: error.code || 'INTERNAL_ERROR'
+        });
     }
 };
 

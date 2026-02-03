@@ -6,6 +6,10 @@ import scheduleRoutes from './routes/scheduleRoutes';
 import pdfRoutes from './routes/pdfRoutes';
 import validationRoutes from './routes/validationRoutes';
 import authRoutes from './routes/authRoutes';
+import configRoutes from './routes/configRoutes';
+import roomRoutes from './routes/roomRoutes';
+import preferenceRoutes from './routes/preferenceRoutes';
+import classRoutes from './routes/classRoutes';
 import { authMiddleware } from './middleware/auth';
 import { setupSecurity, loginLimiter, generateLimiter, pdfLimiter } from './middleware/security';
 import { setupInitialAdmin } from './controllers/authController';
@@ -46,6 +50,10 @@ app.use('/api/grade/gerar', authMiddleware, generateLimiter); // Rate limit extr
 app.use('/api/grade', authMiddleware, scheduleRoutes);
 app.use('/api/pdf', authMiddleware, pdfLimiter, pdfRoutes); // Rate limit extra para PDF
 app.use('/api/validation', authMiddleware, validationRoutes);
+app.use('/api/config', authMiddleware, configRoutes);         // Configurações do sistema
+app.use('/api/rooms', authMiddleware, roomRoutes);            // Salas de aula
+app.use('/api/preferences', authMiddleware, preferenceRoutes); // Preferências de professores
+app.use('/api/classes', authMiddleware, classRoutes);         // Turmas
 
 // Error handler global
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -69,6 +77,10 @@ console.log('   🔐 *    /api/teachers/*     - CRUD Professores');
 console.log('   🔐 POST /api/grade/gerar    - Gerar Grade (10/hora)');
 console.log('   🔐 *    /api/grade/*        - Consultar Grade');
 console.log('   🔐 *    /api/pdf/*          - Exportar PDF (20/hora)');
+console.log('   🔐 *    /api/config/*       - Configurações do sistema');
+console.log('   🔐 *    /api/rooms/*        - Gestão de salas');
+console.log('   🔐 *    /api/preferences/*  - Preferências de professores');
+console.log('   🔐 *    /api/classes/*      - Gestão de turmas');
 console.log('');
 
 // Inicializar banco e criar admin se necessário

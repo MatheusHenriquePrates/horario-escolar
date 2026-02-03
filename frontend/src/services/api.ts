@@ -2,7 +2,7 @@
  * API Service - Centraliza todas as chamadas HTTP para o backend
  */
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Helper para obter token de autenticação
 const getAuthToken = (): string | null => {

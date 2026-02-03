@@ -28,6 +28,7 @@ model Teacher {
   workloadMonthly Int
   color           String
   allocations     Allocation[]
+  preferences     TeacherPreference?
   createdAt       DateTime     @default(now())
 
   @@index([name])
@@ -74,13 +75,147 @@ model Lesson {
   day        Int      // 0-4 (Segunda a Sexta)
   timeSlot   Int      // 0-6 (horários de aula)
   locked     Boolean  @default(false)
+  roomId     String?  // Sala opcional
+  room       Room?    @relation(fields: [roomId], references: [id])
 
   // Índices para performance
   @@index([scheduleId])
   @@index([teacherId])
   @@index([classId])
   @@index([day, timeSlot])
+  @@index([roomId])
 
   // Constraint: Não pode ter duas aulas no mesmo horário para mesma turma
   @@unique([scheduleId, day, timeSlot, classId])
+}
+
+// ==========================================
+// CONFIGURAÇÃO DO SISTEMA
+// ==========================================
+
+model SchoolConfig {
+  id                  String   @id @default(uuid())
+  // Configuração de turnos
+  turnoManha          Boolean  @default(true)
+  turnoTarde          Boolean  @default(true)
+  turnoIntegral       Boolean  @default(false)
+  
+  // Horários do turno da manhã
+  manhaInicio         String   @default("07:00")  // HH:MM
+  manhaFim            String   @default("12:00")
+  
+  // Horários do turno da tarde
+  tardeInicio         String   @default("13:00")
+  tardeFim            String   @default("17:30")
+  
+  // Duração das aulas em minutos
+  duracaoAula         Int      @default(50)
+  
+  // Intervalos
+  recreioInicio       String?  @default("09:30")   // Recreio manhã
+  recreioDuracao      Int      @default(20)        // Minutos
+  recreioTardeInicio  String?  @default("15:00")   // Recreio tarde
+  
+  // Almoço (para turno integral)
+  almocoInicio        String?  @default("12:00")
+  almocoDuracao       Int      @default(60)        // Minutos
+  
+  // Máximo de aulas por turno
+  maxAulasManha       Int      @default(6)
+  maxAulasTarde       Int      @default(5)
+  
+  // Dias de funcionamento (bitmap: 1=Seg, 2=Ter, 4=Qua, 8=Qui, 16=Sex)
+  diasFuncionamento   Int      @default(31)  // Seg a Sex = 1+2+4+8+16
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// Tabela de horários de aula (time slots)
+model TimeSlot {
+  id          String   @id @default(uuid())
+  ordem       Int      // Ordem do slot (1ª aula, 2ª aula, etc)
+  turno       String   // 'manha', 'tarde', 'integral'
+  horaInicio  String   // HH:MM
+  horaFim     String   // HH:MM
+  tipo        String   @default("aula")  // 'aula', 'recreio', 'almoco'
+  ativo       Boolean  @default(true)
+  
+  @@unique([turno, ordem])
+  @@index([turno])
+}
+
+// ==========================================
+// SALAS DE AULA
+// ==========================================
+
+model Room {
+  id          String   @id @default(uuid())
+  nome        String   // Ex: "Sala 101", "Laboratório de Informática"
+  codigo      String   @unique  // Ex: "LAB-INFO", "SALA-101"
+  tipo        String   @default("sala")  // 'sala', 'laboratorio', 'quadra', 'auditorio'
+  capacidade  Int      @default(40)
+  bloco       String?  // Bloco/Prédio (se houver)
+  andar       Int?     // Andar
+  recursos    String[] // ['projetor', 'ar_condicionado', 'computadores']
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  lessons     Lesson[]
+  
+  @@index([tipo])
+  @@index([codigo])
+}
+
+// ==========================================
+// PREFERÊNCIAS DE PROFESSOR
+// ==========================================
+
+model TeacherPreference {
+  id              String   @id @default(uuid())
+  teacherId       String   @unique
+  teacher         Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  
+  // Preferência de turno
+  turnoPreferido  String?  // 'manha', 'tarde', 'ambos', null=sem preferência
+  
+  // Limite de carga horária
+  maxAulasDia     Int?     // Máximo de aulas por dia
+  maxAulasSemana  Int?     // Máximo de aulas por semana
+  
+  // Dias indisponíveis (array de 0-4, onde 0=Segunda)
+  diasIndisponiveis Int[]  // Ex: [4] = não pode sexta
+  
+  // Horários indisponíveis (array de strings "dia-slot")
+  horariosIndisponiveis String[]  // Ex: ["0-0", "0-1"] = seg 1ª e 2ª aula
+  
+  // Preferências extras
+  prefereSalasFixas   Boolean  @default(false)  // Prefere sempre mesma sala
+  evitarAulasConsecutivas Int  @default(3)      // Máx aulas seguidas antes de pausa
+  
+  observacoes     String?  // Notas livres
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([teacherId])
+}
+
+// ==========================================
+// TURMAS (Classes)
+// ==========================================
+
+model Class {
+  id          String   @id @default(uuid())
+  codigo      String   @unique  // Ex: "6A", "7B"
+  nome        String   // Ex: "6º Ano A"
+  serie       Int      // 6, 7, 8, 9
+  turno       String   @default("manha")  // 'manha', 'tarde', 'integral'
+  salaFixa    String?  // ID da sala fixa (se houver)
+  ativo       Boolean  @default(true)
+  qtdAlunos   Int      @default(0)
+  createdAt   DateTime @default(now())
+  
+  @@index([serie])
+  @@index([turno])
 }
